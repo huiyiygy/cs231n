@@ -1,0 +1,5 @@
+# 忽略Pycharm的文件夹
+/.idea/
+
+# 忽略assigment1中数据集文件夹
+/assigment1/dataset/
