@@ -7,6 +7,7 @@
 @time:2018/04/30 15:59
 """
 import numpy as np
+import matplotlib.pyplot as plt
 
 
 class NearestNeighbor:
@@ -43,6 +44,8 @@ class NearestNeighbor:
 
 class KNearestNeighbor:
     """a KNN classifier with L2 distance"""
+    def __init__(self):
+        pass
 
     def train(self, x, y):
         """
@@ -83,7 +86,11 @@ class KNearestNeighbor:
             distances = self.__compute_distances_two_loops(x)
         else:
             raise ValueError('Invalid value %d for num_loops' % num_loops)
-
+        # 可视化L2距离
+        # plt.rcParams['image.interpolation'] = 'nearest'
+        # plt.rcParams['image.cmap'] = 'gray'
+        # plt.imshow(distances, interpolation='none')
+        # plt.show()
         return self.__predict_labels(distances, k)
 
     def __compute_distances_no_loops(self, x):

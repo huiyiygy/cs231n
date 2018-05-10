@@ -26,11 +26,16 @@ def __load_pickle(f):
 
 def __load_cifar_batch(filename):
     """
-    load single batch from cifar-10
-    :param filename:batch的文件名
-    :return:
-        x:读取的图像数据，格式(10000, 32, 32, 3)
-        y:图像数据对应的标签
+    Load single batch from cifar-10
+
+    Inputs
+    ------
+    - filename:batch的文件名
+
+    Returns
+    -------
+    - x:读取的图像数据，格式(10000, 32, 32, 3)
+    - y:图像数据对应的标签
     """
     with open(filename, 'rb') as f:
         datadict = __load_pickle(f)
@@ -43,20 +48,26 @@ def __load_cifar_batch(filename):
         return [x, y]
 
 
-def load_cifar10(cifar10_dir):
+def __load_cifar10(cifar10_dir):
     """
     读取cifar-10数据集，将data_batch_1到5中的所有数据作为训练集,test_batch中的数据作为测试集
-    :return:
-        X_train：训练数据
-        Y_train：训练数据标签
-        X_test：测试数据
-        Y_test：测试数据标签
+
+    Inputs
+    ------
+    - cifar10_dir:数据集所在路径
+
+    Returns
+    -------
+    - x_train:训练数据
+    - y_train:训练数据标签
+    - x_test:测试数据
+    - y_test:测试数据标签
     """
     xt = []
     yt = []
     for b in range(1, 6):  # 读取训练集数据
         filename = os.path.join(cifar10_dir, 'data_batch_%d' % (b,))  # 遍历读取data_batch_1到5
-        x, y = __load_cifar_batch(filename)
+        [x, y] = __load_cifar_batch(filename)
         xt.append(x)
         yt.append(y)
     x_train = np.concatenate(xt)  # xt，yt 内为5个(10000, 3, 32, 32)，将其合并成(50000, 3, 32, 32)
@@ -71,15 +82,21 @@ def get_cifar_data(num_training=49000, num_validation=1000, num_test=1000, subtr
     Load the CIFAR-10 dataset from disk and perform preprocessing to prepare
     it for classifiers. These are the same steps as we used for the SVM, but
     condensed to a single function.
-    :param num_training:想要训练的数量
-    :param num_validation:想要验证的数量
-    :param num_test:想要测试的数量
-    :param subtract_mean:
-    :return:
+
+    Inputs
+    ------
+    - num_training:想要训练的数量
+    - num_validation:想要验证的数量
+    - num_test:想要测试的数量
+    - subtract_mean:子样本是否进行平均
+
+    Returns
+    -------
+
     """
     # Load the raw CIFAR-10 data
     cifar10_dir = 'F:/cs231n/assignment1/dataset/cifar-10-batches-py'
-    x_train, y_train, x_test, y_test = load_cifar10(cifar10_dir)
+    x_train, y_train, x_test, y_test = __load_cifar10(cifar10_dir)
 
     # 选出子集用于验证、训练、测试
     mask = list(range(num_training, num_training + num_validation))
@@ -115,9 +132,14 @@ def get_cifar_data(num_training=49000, num_validation=1000, num_test=1000, subtr
 def __combine_channel(images):
     """
     将图片数据的三通道合并为彩色图像
-    :param images:图片数据 格式(3, 32, 32)
-    :return:
-        img:合并后的彩色图像 PIL格式
+
+    Inputs
+    ------
+    - images:图片数据 格式(3, 32, 32)
+
+    Returns
+    -------
+    - img:合并后的彩色图像 PIL格式
     """
     img0 = images[0]
     img1 = images[1]
@@ -132,8 +154,11 @@ def __combine_channel(images):
 def __show_cifar10(data, label):
     """
     查看数据集中的样本
-    :param data:图片数据 格式(50000,3, 32, 32)
-    :param label:图片对应标签
+
+    Inputs
+    ------
+    - data:图片数据 格式(50000,3, 32, 32)
+    - label:图片对应标签
     """
     classes = ['airplane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']  # 类别列表
     num_classes = len(classes)  # 类别数目
@@ -155,7 +180,10 @@ def __show_cifar10(data, label):
 def __save_cifar10(data):
     """
     保存数据集中图片
-    :param data:图片数据 格式(50000, 3, 32, 32)
+
+    Inputs
+    ------
+    - data:图片数据 格式(50000, 3, 32, 32)
     """
     print("正在保存图片:")
     for i in range(data.shape[0]):  # 获取数据中图片的总数
@@ -173,6 +201,7 @@ def __save_cifar10(data):
 
 
 if __name__ == '__main__':
-    X_train, Y_train, X_test, Y_test = load_cifar10()  # 读取cifar-10数据集
+    cifar10_dir = 'F:/cs231n/assignment1/dataset/cifar-10-batches-py'
+    [X_train, Y_train, X_test, Y_test] = __load_cifar10(cifar10_dir)  # 读取cifar-10数据集
     # __show_cifar10(X_train, Y_train)  # 查看数据集中的样本
     # __save_cifar10(X_train)  # 保存数据集中图片

@@ -2,7 +2,7 @@
 
 """
 @author:HuiYi or 会意
-@file:Test.py
+@file:knn_test.py
 @time:2018/03/28 16:22
 """
 
@@ -93,7 +93,18 @@
 
 import numpy as np
 from data_utils import get_cifar_data
-from classifiers.k_nearest_neighbor import KNearestNeighbor
+from classifiers import KNearestNeighbor
+import time
+
+
+def time_functions(f, *args):
+    """
+    记录函数执行时间的装饰器
+    """
+    tic = time.time()
+    y = f(*args)
+    toc = time.time()
+    return [y, toc - tic]
 
 
 # 读取cifar-10中的数据
@@ -107,5 +118,10 @@ x_train = np.reshape(x_train, (x_train.shape[0], -1))
 x_test = np.reshape(x_test, (x_test.shape[0], -1))
 classifiers = KNearestNeighbor()  # 创建分类器对象
 classifiers.train(x_train, y_train)  # 存入训练数据
-# classifiers.predict(x_test, 3)
-
+[y_predicted, time_used] = time_functions(classifiers.predict, x_test, 3, 0)  # 预测标签
+print('no loops version time used: %f seconds' % time_used)
+# classes = ['airplane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']  # 类别列表
+# # 验证标签
+# num_test = x_test.shape[0]
+# for i in range(num_test):
+#     pass
