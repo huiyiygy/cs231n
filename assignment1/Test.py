@@ -43,29 +43,6 @@
 # print('正弦函数图像')
 
 
-# user_input_string = input('请随机输入一串字母：')
-# print("正在判断其中字母是否可以拼接单词“friend”，请稍后...")
-#
-#
-# def find_n_sub_str(src, sub, start):
-#     index = src.find(sub, start)
-#     number = 0
-#     if index != -1:
-#         number += 1
-#         number += find_n_sub_str(src, sub, index + 1)
-#     return number
-#
-#
-# f_num = find_n_sub_str(user_input_string, 'f', 0)
-# r_num = find_n_sub_str(user_input_string, 'r', 0)
-# i_num = find_n_sub_str(user_input_string, 'i', 0)
-# e_num = find_n_sub_str(user_input_string, 'e', 0)
-# n_num = find_n_sub_str(user_input_string, 'n', 0)
-# d_num = find_n_sub_str(user_input_string, 'd', 0)
-# total = min(f_num, r_num, i_num, e_num, n_num, d_num)
-# print('输入的字符串为：%s \n可以组成 %d 个“friend”单词' % (user_input_string, total))
-
-
 # 测试闭包
 # def say_hello(prefix):
 #     prefix = prefix + '45679w'
@@ -76,7 +53,6 @@
 #
 #
 # a = say_hello('good morning,')
-# a('严广宇')
 
 
 # 测试类中的方法重载
