@@ -95,6 +95,7 @@ import numpy as np
 from data_utils import get_cifar_data
 from classifiers import KNearestNeighbor
 import time
+import matplotlib.pyplot as plt
 
 
 def time_functions(f, *args):
@@ -107,21 +108,91 @@ def time_functions(f, *args):
     return [y, toc - tic]
 
 
-# 读取cifar-10中的数据
-data = get_cifar_data(num_training=5000, num_validation=1000, num_test=500, subtract_mean=False)
-x_train = data['x_train']
-y_train = data['y_train']
-x_test = data['x_test']
-y_test = data['y_test']
-# 将图像数据转置成二维的
-x_train = np.reshape(x_train, (x_train.shape[0], -1))
-x_test = np.reshape(x_test, (x_test.shape[0], -1))
-classifiers = KNearestNeighbor()  # 创建分类器对象
-classifiers.train(x_train, y_train)  # 存入训练数据
-[y_predicted, time_used] = time_functions(classifiers.predict, x_test, 3, 0)  # 预测标签
-print('no loops version time used: %f seconds' % time_used)
-# classes = ['airplane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']  # 类别列表
-# # 验证标签
-# num_test = x_test.shape[0]
-# for i in range(num_test):
-#     pass
+def verification_label(predicted, original):
+    """验证标签"""
+    # classes = ['airplane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']  # 类别列表
+    correct_number = int(np.sum(predicted == original))
+    num_test = original.shape[0]
+    # for i in range(num_test):
+    #     predicted_label_index = int(predicted[i])
+    #     original_label_index = int(original[i])
+    #     print('predicted label:%s,\t original label:%s\n' %
+    #           (classes[predicted_label_index], classes[original_label_index]))
+    print('correct number: %d, error number: %d, accuracy: %f ' %
+          (correct_number, num_test - correct_number, correct_number * 1.0 / num_test))
+
+
+def cross_validation(train_data, train_label):
+    """交叉验证的方式选择最优的超参数k"""
+    num_folds = 5
+    k_choices = [1, 3, 5, 8, 10, 12, 15, 20, 50, 100]
+    # 任务：
+    # 将训练数据切分，训练样本和对应的样本标签包含在数组
+    # x_train_folds 和 y_train_folds 之中，数组的长度为num_folds
+    # 其中y_train_folds[i] 是一个矢量，表示矢量x_train_folds[i]中所有样本的标签
+    # 提示：可以尝试使用numpy的 array_spilt 方法
+    x_train_folds = np.array_split(train_data, num_folds)
+    y_train_folds = np.array_split(train_label, num_folds)
+    # 我们将不同k值下的准确率保存在一个字典中。交叉验证之后，k_to_accuracies[k]保存了一个
+    # 长度为num_folds的list，值为k值下的准确率
+    k_to_accuracies = {}
+    # 任务：
+    # 通过k折的交叉验证找到最佳k值。对于每一个k值，执行KNN算法num_folds次，每一次执行中，选择一折为验证集
+    # 其它折为训练集。将不同k值在不同折上的验证结果保存在k_to_accuracies字典中
+    classifiers = KNearestNeighbor()
+    for k in k_choices:
+        accuracies = np.zeros(num_folds)
+        for fold in range(num_folds):
+            temp_x = x_train_folds.copy()
+            temp_y = y_train_folds.copy()
+            # 组成验证集
+            x_validate_fold = temp_x.pop(fold)
+            y_validate_fold = temp_y.pop(fold)
+            # 组成训练集
+            x_temp_train_fold = np.array([x for x_fold in temp_x for x in x_fold])
+            y_temp_train_fold = np.array([y for y_fold in temp_y for y in y_fold])
+            classifiers.train(x_temp_train_fold, y_temp_train_fold)
+            # 进行验证
+            y_test_predicted = classifiers.predict(x_validate_fold, k, 0)
+            num_correct = np.sum(y_test_predicted == y_validate_fold)
+            accuracy = float(num_correct) / y_validate_fold.shape[0]
+            accuracies[fold] = accuracy
+        k_to_accuracies[k] = accuracies
+    # 输出准确率
+    for k in sorted(k_to_accuracies):
+        for accuracy in k_to_accuracies[k]:
+            print('k = %d, accuracy = %f' % (k, accuracy))
+    # 画图显示所有的精确度散点
+    for k in k_choices:
+        accuracies = k_to_accuracies[k]
+        plt.scatter([k]*len(accuracies), accuracies)
+    # plot the trend line with error bars that correspond to standard
+    # 画出在不同k值下，误差均值和标准差
+    accuracies_mean = np.array([np.mean(k_to_accuracies[k]) for k in sorted(k_to_accuracies)])
+    accuracies_std = np.array([np.std(k_to_accuracies[k]) for k in sorted(k_to_accuracies)])
+    plt.errorbar(k_choices, accuracies_mean, yerr=accuracies_std)
+    plt.title('Cross-validation on k')
+    plt.xlabel('k')
+    plt.ylabel('Cross-validation accuracy')
+    plt.show()
+
+
+if __name__ == '__main__':
+    # 读取cifar-10中的数据
+    data = get_cifar_data(num_training=5000, num_validation=1000, num_test=500, subtract_mean=False)
+    x_train = data['x_train']
+    y_train = data['y_train']
+    x_test = data['x_test']
+    y_test = data['y_test']
+    # 将图像数据转置成二维的
+    x_train = np.reshape(x_train, (x_train.shape[0], -1))
+    x_test = np.reshape(x_test, (x_test.shape[0], -1))
+    # classifiers = KNearestNeighbor()  # 创建分类器对象
+    # classifiers.train(x_train, y_train)  # 存入训练数据
+    # [y_predicted, time_used] = time_functions(classifiers.predict, x_test, 3, 0)  # 预测标签
+    # print('no loops version time used: %f seconds' % time_used)
+    # verification_label(y_predicted, y_test)  # 验证标签
+    # 交叉验证的方式选择最优的超参数k
+    cross_validation(x_train, y_train)
+
+
