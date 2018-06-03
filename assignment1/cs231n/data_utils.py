@@ -18,9 +18,9 @@ import platform
 def __load_pickle(f):
     version = platform.python_version_tuple()
     if version[0] == '2':
-        return  pickle.load(f)
+        return pickle.load(f)
     elif version[0] == '3':
-        return  pickle.load(f, encoding='latin1')
+        return pickle.load(f, encoding='latin1')
     raise ValueError("invalid python version: {}".format(version))
 
 
@@ -48,7 +48,7 @@ def __load_cifar_batch(filename):
         return [x, y]
 
 
-def __load_cifar10(cifar10_dir):
+def load_cifar10(cifar10_path):
     """
     读取cifar-10数据集，将data_batch_1到5中的所有数据作为训练集,test_batch中的数据作为测试集
 
@@ -66,14 +66,14 @@ def __load_cifar10(cifar10_dir):
     xt = []
     yt = []
     for b in range(1, 6):  # 读取训练集数据
-        filename = os.path.join(cifar10_dir, 'data_batch_%d' % (b,))  # 遍历读取data_batch_1到5
+        filename = os.path.join(cifar10_path, 'data_batch_%d' % (b,))  # 遍历读取data_batch_1到5
         [x, y] = __load_cifar_batch(filename)
         xt.append(x)
         yt.append(y)
     x_train = np.concatenate(xt)  # xt，yt 内为5个(10000, 3, 32, 32)，将其合并成(50000, 3, 32, 32)
     y_train = np.concatenate(yt)
     del x, y
-    x_test, y_test = __load_cifar_batch(os.path.join(cifar10_dir, 'test_batch'))  # 读取测试集数据
+    x_test, y_test = __load_cifar_batch(os.path.join(cifar10_path, 'test_batch'))  # 读取测试集数据
     return [x_train, y_train, x_test, y_test]
 
 
@@ -95,8 +95,8 @@ def get_cifar_data(num_training=49000, num_validation=1000, num_test=1000, subtr
 
     """
     # Load the raw CIFAR-10 data
-    cifar10_dir = 'F:/cs231n/assignment1/dataset/cifar-10-batches-py'
-    x_train, y_train, x_test, y_test = __load_cifar10(cifar10_dir)
+    cifar10_directory = 'F:/cs231n/assignment1/cs231n/dataset/cifar-10-batches-py'
+    x_train, y_train, x_test, y_test = load_cifar10(cifar10_directory)
 
     # 选出子集用于验证、训练、测试
     mask = list(range(num_training, num_training + num_validation))
@@ -110,11 +110,12 @@ def get_cifar_data(num_training=49000, num_validation=1000, num_test=1000, subtr
     y_test = y_test[mask]
 
     # Normalize the data: subtract the mean image
+    # 0值中心化
     if subtract_mean:
         mean_image = np.mean(x_train, axis=0)
-        x_train = mean_image
-        x_val = mean_image
-        x_test = mean_image
+        x_train -= mean_image
+        x_val -= mean_image
+        x_test -= mean_image
 
     # 转换轴使得通道数位于前面
     x_train = x_train.transpose(0, 3, 1, 2).copy()
@@ -201,7 +202,7 @@ def __save_cifar10(data):
 
 
 if __name__ == '__main__':
-    cifar10_dir = 'F:/cs231n/assignment1/dataset/cifar-10-batches-py'
-    [X_train, Y_train, X_test, Y_test] = __load_cifar10(cifar10_dir)  # 读取cifar-10数据集
+    cifar10_dir = 'F:/cs231n/assignment1/cs231n/dataset/cifar-10-batches-py'
+    [X_train, Y_train, X_test, Y_test] = load_cifar10(cifar10_dir)  # 读取cifar-10数据集
     # __show_cifar10(X_train, Y_train)  # 查看数据集中的样本
     # __save_cifar10(X_train)  # 保存数据集中图片

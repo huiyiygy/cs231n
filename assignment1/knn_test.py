@@ -92,8 +92,8 @@
 # testList.show()
 
 import numpy as np
-from data_utils import get_cifar_data
-from classifiers import KNearestNeighbor
+from cs231n.data_utils import get_cifar_data
+from cs231n.classifiers import KNearestNeighbor
 import time
 import matplotlib.pyplot as plt
 
