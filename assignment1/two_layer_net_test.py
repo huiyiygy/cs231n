@@ -134,39 +134,79 @@ if __name__ == '__main__':
     # toymodel_net_test()
 
     X_train, y_train, X_test, y_test, X_val, y_val = get_data()
-    input_size = 32 * 32 * 3
-    hidden_size = 50
+    # 真实数据集训练
+    # input_size = 32 * 32 * 3
+    # hidden_size = 50
+    # num_classes = 10
+    # net = TwoLayerNet(input_size, hidden_size, num_classes)
+    #
+    # # Train the network
+    # stats = net.train(X_train, y_train, X_val, y_val, num_iters=10000, batch_size=200,
+    #                   learning_rate=1e-3, learning_rate_decay=0.95, reg=0.5, verbose=True)
+    #
+    # # Predict on the validation set
+    # val_acc = np.mean(net.predict(X_val) == y_val)
+    # print('Validation accuracy: ', val_acc)
+    #
+    # # Predict on the test set
+    # test_acc = np.mean(net.predict(X_test) == y_test)
+    # print('Test accuracy: ', test_acc)
+    #
+    # # Plot the loss function and train / validation accuracies
+    # plt.subplot(2, 1, 1)
+    # plt.plot(stats['loss_history'])
+    # plt.title('Loss history')
+    # plt.xlabel('Iteration')
+    # plt.ylabel('Loss')
+    #
+    # plt.subplot(2, 1, 2)
+    # plt.plot(stats['train_acc_history'], label='train')
+    # plt.plot(stats['val_acc_history'], label='val')
+    # plt.title('Classification accuracy history')
+    # plt.xlabel('Epoch')
+    # plt.ylabel('Clasification accuracy')
+    # plt.legend()
+    # plt.tight_layout()  # 调整子图间距
+    # plt.show()
+    #
+    # # 可视化网络权重
+    # show_net_weights(net)
+
+    # ------------------------------------------------我是分割线-------------------------------------------------- #
+    # 使用交叉验证调整超参数
+    best_net = None  # store the best model into this
+    input_size = 3072
     num_classes = 10
-    net = TwoLayerNet(input_size, hidden_size, num_classes)
+    best_val_acc = -1
+    learning_rate = [7e-4, 8e-4, 9e-4]
+    regularization_strength = [0.4, 0.5, 0.6]
+    hidden_size = [50, 75, 100]
+    results = {}
 
-    # Train the network
-    stats = net.train(X_train, y_train, X_val, y_val, num_iters=10000, batch_size=200,
-                      learning_rate=1e-3, learning_rate_decay=0.95, reg=0.25, verbose=True)
+    print('running...')
+    for hs in hidden_size:
+        for lr in learning_rate:
+            for reg in regularization_strength:
+                print('.')
+                net = TwoLayerNet(input_size, hs, num_classes)
+                # Train the network
+                stats = net.train(X_train, y_train, X_val, y_val, num_iters=1000, batch_size=200, learning_rate=lr,
+                                  learning_rate_decay=0.95, reg=reg, verbose=False)
+                val_acc = np.mean(net.predict(X_val) == y_val)
+                if val_acc > best_val_acc:
+                    best_val_acc = val_acc
+                    best_net = net
+                results[(hs, lr, reg)] = val_acc
 
-    # Predict on the validation set
-    val_acc = np.mean(net.predict(X_val) == y_val)
-    print('Validation accuracy: ', val_acc)
+    print('finished')
+    # Print out results.
+    for hs, lr, reg in sorted(results):
+        val_acc = results[(hs, lr, reg)]
+        print('hs %d lr %e reg %e val accuracy: %f' % (hs, lr, reg, val_acc))
 
-    # Predict on the test set
-    test_acc = np.mean(net.predict(X_test) == y_test)
+    print('best validation accuracy achieved during cross-validation: %f' % best_val_acc)
+
+    show_net_weights(best_net)
+
+    test_acc = (best_net.predict(X_test) == y_test).mean()
     print('Test accuracy: ', test_acc)
-
-    # Plot the loss function and train / validation accuracies
-    plt.subplot(2, 1, 1)
-    plt.plot(stats['loss_history'])
-    plt.title('Loss history')
-    plt.xlabel('Iteration')
-    plt.ylabel('Loss')
-
-    plt.subplot(2, 1, 2)
-    plt.plot(stats['train_acc_history'], label='train')
-    plt.plot(stats['val_acc_history'], label='val')
-    plt.title('Classification accuracy history')
-    plt.xlabel('Epoch')
-    plt.ylabel('Clasification accuracy')
-    plt.legend()
-    plt.tight_layout()  # 调整子图间距
-    plt.show()
-
-    # 可视化网络权重
-    show_net_weights(net)
