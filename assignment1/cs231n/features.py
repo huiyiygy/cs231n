@@ -1,0 +1,157 @@
+# -*- coding:utf-8 -*-
+
+"""
+@function:
+@author:HuiYi or 会意
+@file:features.py
+@time:2018/06/13 13:45
+"""
+from matplotlib.colors import rgb_to_hsv
+import numpy as np
+from scipy.ndimage import uniform_filter
+
+
+def extract_features(imgs, feature_fns, verbose=False):
+    """
+    Given pixel data for images and several feature functions that can operate on single
+    images, apply all features functions to all images, concatenating the feature vectors for
+    each image and storing the features for all images in a single matrix.
+    给定图像的像素数据以及可以在单幅图像上运行的若干特征函数，将所有特征函数应用于所有图像，
+    连接每幅图像的特征向量，并将所有图像的特征存储在单个矩阵中。
+
+    Inputs:
+    -------
+    - imgs: N x H x W x C array of pixel data for N images.
+    - feature_fns: List of k feature functions. The ith feature function should take as input
+        an H x W x D array and return a (one-dimensional) array of length F_i.
+    - verbose: Boolean: if true, print progress
+
+    Returns:
+    --------
+    An array of shape (N, F_1 + ... + F_K) where each column is the concatenation of all
+    features for a single image.
+    """
+    num_images = imgs.shape[0]
+    if num_images == 0:
+        return np.array([])
+
+    # Use the first image to determine feature dimensions
+    feature_dims = []
+    first_image_features = []
+    for feature_fn in feature_fns:
+        feats = feature_fn(imgs[0].squeeze())
+        assert len(feats.shape) == 1, 'Feature functions must be one dimensional'
+        feature_dims.append(feats.size)
+        first_image_features.append(feats)
+
+    # Now that we know the dimensions of the features, we can allocate a single
+    # big array to store all features as columns.
+    total_feature_dim = sum(feature_dims)
+    imgs_features = np.zeros((num_images, total_feature_dim))
+    imgs_features[0] = np.hstack(first_image_features).T
+
+    # Extract features for the rest of the images.
+    for i in range(1, num_images):
+        idx = 0
+        for feature_fn, feature_dim in zip(feature_fns, feature_dims):
+            next_inx = idx + feature_dim
+            imgs_features[i, idx:next_inx] = feature_fn(imgs[i].squeeze())
+            idx = next_inx
+        if verbose and i % 1000 == 0:
+            print('Done extracting features for %d / %d images' % (i, num_images))
+
+    return imgs_features
+
+
+def rgb2gray(rgb):
+    """
+    Convert RGB image to gray
+
+    Inputs:
+    -------
+    - rgb: RGB image
+
+    Returns:
+    --------
+    - gray: garyscale image
+    """
+    return np.dot(rgb[..., :3], [0.299, 0.587, 0.144])
+
+
+def hog_feature(im):
+    """
+    Compute Histogram of Gradient (HOG) feature for an image
+
+    Modified from skimage.feature.hog
+       http://pydoc.net/Python/scikits-image/0.4.2/skimage.feature.hog
+
+    Reference:
+       Histograms of Oriented Gradients for Human Detection
+       Navneet Dalal and Bill Triggs, CVPR 2005
+
+    Inputs:
+    -------
+    - im: an input grayscale or rgb image
+
+    Returns:
+    --------
+    - feat: Histogram of Gradient(HOG) feature
+    """
+    # convert rgb to grayscale if needed
+    if im.ndim == 3:
+        image = rgb2gray(im)
+    else:
+        image = np.atleast_2d(im)
+
+    sx, sy = image.shape  # image size
+    orientations = 9  # number of gradient bins
+    cx, cy = (8, 8)  # pixel per cell
+
+    gx = np.zeros(image.shape)
+    gy = np.zeros(image.shape)
+    gx[:, :-1] = np.diff(image, n=1, axis=1)  # compute gradient on x-direction
+    gy[:-1, :] = np.diff(image, n=1, axis=0)  # compute gradient on y-direction
+    grad_img = np.sqrt(gx**2 + gy**2)  # gradient magnitude
+    grad_ori = np.arctan2(gy, (gx + 1e-15)) * (180 / np.pi) + 90  # gradient orientation
+
+    n_cellsx = int(np.floor(sx / cx))  # number of cells in x
+    n_cellsy = int(np.floor(sy / cy))  # number of cells in y
+    # compute orientations integral images
+    orientation_histogram = np.zeros((n_cellsx, n_cellsy, orientations))
+    for i in range(orientations):
+        # create new intrgral image for this orientation
+        # isolate orientations in this range
+        temp_ori = np.where(grad_ori < 180 / orientations * (i + 1), grad_ori, 0)
+        temp_ori = np.where(grad_ori >= 180 / orientations * i, temp_ori, 0)
+
+        # select magnitudes for those orientations
+        cond2 = temp_ori > 0
+        temp_mag = np.where(cond2, grad_img, 0)
+        orientation_histogram[:, :, i] = \
+            uniform_filter(temp_mag, size=(cx, cy))[int(cx/2)::cx, int(cy/2)::cy].T
+
+    return orientation_histogram.ravel()
+
+
+def color_histogram_hsv(im, nbin=10, xmin=0, xmax=255, normalized=True):
+    """
+    Compute color histogram for an image using hue.
+
+    Inputs:
+    -------
+    - im: H x W x C array of pixel data for an RGB image.
+    - nbin: Number of histogram bins. (default: 10)
+    - xmin: Minimum pixel value (default: 0)
+    - xmax: Maximum pixel value (default: 255)
+    - normalized: Whether to normalize the histogram (default: True)
+
+    Returns:
+    --------
+    1D vector of length nbin giving the color histogram over the hue of the input image.
+    """
+    bins = np.linspace(xmin, xmax, nbin+1)
+    hsv = rgb_to_hsv(im/xmax) * xmax
+    imhist, bin_edges = np.histogram(hsv[:, :, 0], bins=bins, density=normalized)
+    imhist = imhist * np.diff(bin_edges)
+
+    return imhist
