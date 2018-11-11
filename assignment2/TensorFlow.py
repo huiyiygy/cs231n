@@ -242,6 +242,7 @@ def three_layer_convnet(x, params):
     relu1 = tf.nn.relu(conv1)
     conv2 = tf.nn.conv2d(relu1, conv_w2, strides=[1, 1, 1, 1], padding='SAME', name='conv2') + conv_b2
     relu2 = tf.nn.relu(conv2)
+    relu2 = tf.layers.flatten(relu2)
     scores = tf.matmul(relu2, fc_w) + fc_b
     ############################################################################
     #                              END OF YOUR CODE                            #
@@ -249,19 +250,364 @@ def three_layer_convnet(x, params):
     return scores
 
 
+def three_layer_convnet_test():
+    tf.reset_default_graph()
+
+    with tf.device(device):
+        x = tf.placeholder(tf.float32)
+        conv_w1 = tf.zeros((5, 5, 3, 6))
+        conv_b1 = tf.zeros((6,))
+        conv_w2 = tf.zeros((3, 3, 6, 9))
+        conv_b2 = tf.zeros((9,))
+        fc_w = tf.zeros((32 * 32 * 9, 10))
+        fc_b = tf.zeros((10,))
+        params = [conv_w1, conv_b1, conv_w2, conv_b2, fc_w, fc_b]
+        scores = three_layer_convnet(x, params)
+
+    # Inputs to convolutional layers are 4-dimensional arrays with shape
+    # [batch_size, height, width, channels]
+    x_np = np.zeros((64, 32, 32, 3))
+
+    with tf.Session() as sess:
+        sess.run(tf.global_variables_initializer())
+        scores_np = sess.run(scores, feed_dict={x: x_np})
+        print('scores_np has shape: ', scores_np.shape)
+
+
+def training_step(scores, y, params, learning_rate):
+    """
+    Set up the part of the computational graph which makes a training step.
+
+    We now define the `training_step` function which sets up the part of the computational graph that performs a single
+    training step. This will take three basic steps:
+
+    1. Compute the loss
+    2. Compute the gradient of the loss with respect to all network weights
+    3. Make a weight update step using (stochastic) gradient descent.
+
+    Note that the step of updating the weights is itself an operation in the computational graph - the calls to
+    `tf.assign_sub` in `training_step` return TensorFlow operations that mutate the weights when they are executed.
+    There is an important bit of subtlety here - when we call `sess.run`, TensorFlow does not execute all operations in
+    the computational graph; it only executes the minimal subset of the graph necessary to compute the outputs that we
+    ask TensorFlow to produce. As a result, naively computing the loss would not cause the weight update operations to
+    execute, since the operations needed to compute the loss do not depend on the output of the weight update. To fix
+    this problem, we insert a **control dependency** into the graph, adding a duplicate `loss` node to the graph that
+    does depend on the outputs of the weight update operations; this is the object that we actually return from the
+    `training_step` function. As a result, asking TensorFlow to evaluate the value of the `loss` returned from
+    `training_step` will also implicitly update the weights of the network using that minibatch of data.
+
+    We need to use a few new TensorFlow functions to do all of this:
+    - For computing the cross-entropy loss we'll use `tf.nn.sparse_softmax_cross_entropy_with_logits`:
+        https://www.tensorflow.org/api_docs/python/tf/nn/sparse_softmax_cross_entropy_with_logits
+    - For averaging the loss across a minibatch of data we'll use `tf.reduce_mean`:
+    https://www.tensorflow.org/api_docs/python/tf/reduce_mean
+    - For computing gradients of the loss with respect to the weights we'll use `tf.gradients`:
+        https://www.tensorflow.org/api_docs/python/tf/gradients
+    - We'll mutate the weight values stored in a TensorFlow Tensor using `tf.assign_sub`:
+        https://www.tensorflow.org/api_docs/python/tf/assign_sub
+    - We'll add a control dependency to the graph using `tf.control_dependencies`:
+        https://www.tensorflow.org/api_docs/python/tf/control_dependencies
+
+    Inputs:
+    - scores: TensorFlow Tensor of shape (N, C) giving classification scores for
+      the model.
+    - y: TensorFlow Tensor of shape (N,) giving ground-truth labels for scores;
+      y[i] == c means that c is the correct class for scores[i].
+    - params: List of TensorFlow Tensors giving the weights of the model
+    - learning_rate: Python scalar giving the learning rate to use for gradient
+      descent step.
+
+    Returns:
+    - loss: A TensorFlow Tensor of shape () (scalar) giving the loss for this
+      batch of data; evaluating the loss also performs a gradient descent step
+      on params (see above).
+    """
+    # First compute the loss; the first line gives losses for each example in
+    # the minibatch, and the second averages the losses acros the batch
+    losses = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y, logits=scores)
+    loss = tf.reduce_mean(losses)
+    # Compute the gradient of the loss with respect to each parameter of the the
+    # network. This is a very magical function call: TensorFlow internally
+    # traverses the computational graph starting at loss backward to each element
+    # of params, and uses backpropagation to figure out how to compute gradients;
+    # it then adds new operations to the computational graph which compute the
+    # requested gradients, and returns a list of TensorFlow Tensors that will
+    # contain the requested gradients when evaluated.
+    grad_params = tf.gradients(loss, params)
+    # Make a gradient descent step on all of the model parameters.
+    new_weights = []
+    for w, grad_w in zip(params, grad_params):
+        new_w = tf.assign_sub(w, learning_rate * grad_w)
+        new_weights.append(new_w)
+    # Insert a control dependency so that evaluting the loss causes a weight
+    # update to happen; see the discussion above.
+    with tf.control_dependencies(new_weights):
+        return tf.identity(loss)
+
+
+def check_accuracy(sess, dset, x, scores, is_training=None):
+    """
+    Check accuracy on a classification model.
+
+    Inputs:
+    - sess: A TensorFlow Session that will be used to run the graph
+    - dset: A Dataset object on which to check accuracy
+    - x: A TensorFlow placeholder Tensor where input images should be fed
+    - scores: A TensorFlow Tensor representing the scores output from the
+      model; this is the Tensor we will ask TensorFlow to evaluate.
+
+    Returns: Nothing, but prints the accuracy of the model
+    """
+    num_correct, num_samples = 0, 0
+    for x_batch, y_batch in dset:
+        feed_dict = {x: x_batch, is_training: 0}
+        scores_np = sess.run(scores, feed_dict=feed_dict)
+        y_pred = scores_np.argmax(axis=1)
+        num_samples += x_batch.shape[0]
+        num_correct += (y_pred == y_batch).sum()
+    acc = float(num_correct) / num_samples
+    print('Got %d / %d correct (%.2f%%)' % (num_correct, num_samples, 100 * acc))
+
+
+def train_part2(model_fn, init_fn, learning_rate):
+    """
+    Now we set up a basic training loop using low-level TensorFlow operations. We will train the model using stochastic
+    gradient descent without momentum. The training_step function sets up the part of the computational graph that
+    performs the training step, and the function train_part2 iterates through the training data, making training steps
+    on each minibatch, and periodically evaluates accuracy on the validation set.
+
+    Train a model on CIFAR-10.
+
+    Inputs:
+    - model_fn: A Python function that performs the forward pass of the model
+      using TensorFlow; it should have the following signature:
+      scores = model_fn(x, params) where x is a TensorFlow Tensor giving a
+      minibatch of image data, params is a list of TensorFlow Tensors holding
+      the model weights, and scores is a TensorFlow Tensor of shape (N, C)
+      giving scores for all elements of x.
+    - init_fn: A Python function that initializes the parameters of the model.
+      It should have the signature params = init_fn() where params is a list
+      of TensorFlow Tensors holding the (randomly initialized) weights of the
+      model.
+    - learning_rate: Python float giving the learning rate to use for SGD.
+    """
+    # First clear the default graph
+    tf.reset_default_graph()
+    is_training = tf.placeholder(tf.bool, name='is_training')
+    # Set up the computational graph for performing forward and backward passes, and weight updates.
+    with tf.device(device):
+        # Set up placeholders for the data and labels
+        x = tf.placeholder(tf.float32, [None, 32, 32, 3])
+        y = tf.placeholder(tf.int32, [None])
+        params = init_fn()  # Initialize the model parameters
+        scores = model_fn(x, params)  # Forward pass of the model
+        loss = training_step(scores, y, params, learning_rate)
+
+    # Now we actually run the graph many times using the training data
+    with tf.Session() as sess:
+        # Initialize variables that will live in the graph
+        sess.run(tf.global_variables_initializer())
+        for t, (x_np, y_np) in enumerate(train_dset):
+            # Run the graph on a batch of training data; recall that asking
+            # TensorFlow to evaluate loss will cause an SGD step to happen.
+            feed_dict = {x: x_np, y: y_np}
+            loss_np = sess.run(loss, feed_dict=feed_dict)
+
+            # Periodically print the loss and check accuracy on the val set
+            if t % print_every == 0:
+                print('Iteration %d, loss = %.4f' % (t, loss_np))
+                check_accuracy(sess, val_dset, x, scores, is_training)
+
+
+def kaiming_normal(shape):
+    fan_in, fan_out = 0, 0
+    if len(shape) == 2:
+        fan_in, fan_out = shape[0], shape[1]
+    elif len(shape) == 4:
+        fan_in, fan_out = np.prod(shape[:3]), shape[3]  # np.prod将里面所有的元素相乘
+    #  tf.random_normal 返回服从均值为0，方差为1的高斯分布
+    return tf.random_normal(shape) * np.sqrt(2.0 / fan_in)
+
+
+def two_layer_fc_init():
+    """
+    Initialize the weights of a two-layer network, for use with the
+    two_layer_network function defined above.
+
+    Inputs: None
+
+    Returns: A list of:
+    - w1: TensorFlow Variable giving the weights for the first layer
+    - w2: TensorFlow Variable giving the weights for the second layer
+    """
+    hidden_layer_size = 4000
+    # tf.Variable() A variable maintains state in the graph across calls to `run()`
+    w1 = tf.Variable(kaiming_normal((3 * 32 * 32, hidden_layer_size)))
+    w2 = tf.Variable(kaiming_normal((hidden_layer_size, 10)))
+    return [w1, w2]
+
+
+def three_layer_convnet_init():
+    """
+    Initialize the weights of a Three-Layer ConvNet, for use with the
+    three_layer_convnet function defined above.
+
+    Inputs: None
+
+    Returns a list containing:
+    - conv_w1: TensorFlow Variable giving weights for the first conv layer
+    - conv_b1: TensorFlow Variable giving biases for the first conv layer
+    - conv_w2: TensorFlow Variable giving weights for the second conv layer
+    - conv_b2: TensorFlow Variable giving biases for the second conv layer
+    - fc_w: TensorFlow Variable giving weights for the fully-connected layer
+    - fc_b: TensorFlow Variable giving biases for the fully-connected layer
+    """
+    params = None
+    ############################################################################
+    # Initialize the parameters of the three-layer network.              #
+    ############################################################################
+    conv_w1 = tf.Variable(kaiming_normal((5, 5, 3, 32)))
+    conv_b1 = tf.Variable(tf.zeros((32,)))
+    conv_w2 = tf.Variable(kaiming_normal((3, 3, 32, 16)))
+    conv_b2 = tf.Variable(tf.zeros((16,)))
+    fc_w = tf.Variable(kaiming_normal((32*32*16, 10)))
+    fc_b = tf.Variable(tf.zeros((10,)))
+    params = [conv_w1, conv_b1, conv_w2, conv_b2, fc_w, fc_b]
+    ############################################################################
+    #                             END OF YOUR CODE                             #
+    ############################################################################
+    return params
+
+
+class TwoLayerFC(tf.keras.models.Model):
+    """"""
+    # def __init__(self, hidden_size, num_classes):
+    #     super().__init__()
+    #     initializer = tf.variance_scaling_initializer(scale=2.0)
+    #     self.fc1 = tf.layers.Dense(hidden_size, activation=tf.nn.relu, kernel_initializer=initializer)
+    #     self.fc2 = tf.layers.Dense(num_classes, kernel_initializer=initializer)
+    # def call(self, x, training=None):
+    #     x = tf.layers.flatten(x)
+    #     x = self.fc1(x)
+    #     x = self.fc2(x)
+    #     return x
+    def __init__(self, input_size, hidden_size, num_classes):
+        # tf.variance_scaling_initializer gives behavior similar to the Kaiming initialization method
+        initializer = tf.variance_scaling_initializer(scale=2.0)
+        self.inputs = tf.layers.Input((input_size,))
+        self.fc1 = tf.layers.Dense(hidden_size, activation=tf.nn.relu, kernel_initializer=initializer)(self.inputs)
+        self.outputs = tf.layers.Dense(num_classes, kernel_initializer=initializer)(self.fc1)
+        super(TwoLayerFC, self).__init__(self.inputs, self.outputs)
+
+
+def test_two_layer_fc():
+    """ A small unit test to exercise the TwoLayerFC model above. """
+    tf.reset_default_graph()
+    input_size, hidden_size, num_classes = 50, 42, 10
+    # As usual in TensorFlow, we first need to define our computational graph.
+    # To this end we first construct a TwoLayerFC object, then use it to construct
+    # the scores Tensor.
+    model = TwoLayerFC(input_size, hidden_size, num_classes)
+    with tf.device(device):
+        x = tf.zeros((64, input_size))
+        x = tf.layers.flatten(x)
+        scores = model(x)
+
+    # Now that our computational graph has been defined we can run the graph
+    with tf.Session() as sess:
+        sess.run(tf.global_variables_initializer())
+        scores_np = sess.run(scores)
+        print(scores_np.shape)
+
+
+def two_layer_fc_functional(inputs, hidden_size, num_classes):
+    initializer = tf.variance_scaling_initializer(scale=2.0)
+    flattened_inputs = tf.layers.flatten(inputs)
+    fc1_output = tf.layers.dense(flattened_inputs, hidden_size, activation=tf.nn.relu, kernel_initializer=initializer)
+    scores = tf.layers.dense(fc1_output, num_classes, kernel_initializer=initializer)
+    return scores
+
+
+def test_two_layer_fc_functional():
+    """ A small unit test to exercise the TwoLayerFC model above. """
+    tf.reset_default_graph()
+    input_size, hidden_size, num_classes = 50, 42, 10
+
+    # As usual in TensorFlow, we first need to define our computational graph.
+    # To this end we first construct a two layer network graph by calling the
+    # two_layer_network() function. This function constructs the computation
+    # graph and outputs the score tensor.
+    with tf.device(device):
+        x = tf.zeros((64, input_size))
+        scores = two_layer_fc_functional(x, hidden_size, num_classes)
+
+    # Now that our computational graph has been defined we can run the graph
+    with tf.Session() as sess:
+        sess.run(tf.global_variables_initializer())
+        scores_np = sess.run(scores)
+        print(scores_np.shape)
+
+
+class ThreeLayerConvNet(tf.keras.models.Model):
+    def __init__(self, channel_1, channel_2, num_classes):
+        super().__init__()  # tensorflow1.6及以下版本此句会报错，不支持此写法
+        ########################################################################
+        # Implement the __init__ method for a three-layer ConvNet. You   #
+        # should instantiate layer objects to be used in the forward pass.     #
+        ########################################################################
+        initializer = tf.variance_scaling_initializer(scale=2.0)
+        self.conv1 = tf.layers.Conv2D(filters=channel_1, kernel_size=(5, 5), padding='same',
+                                      kernel_initializer=initializer, activation=tf.nn.relu, name='conv1')
+        self.conv2 = tf.layers.Conv2D(filters=channel_2, kernel_size=(3, 3), padding='same',
+                                      kernel_initializer=initializer, activation=tf.nn.relu, name='conv2')
+        self.outputs = tf.layers.Dense(num_classes, kernel_initializer=initializer, name='outputs')
+        ########################################################################
+        #                           END OF YOUR CODE                           #
+        ########################################################################
+
+    def call(self, x, training=None):
+        scores = None
+        ########################################################################
+        # Implement the forward pass for a three-layer ConvNet. You      #
+        # should use the layer objects defined in the __init__ method.         #
+        ########################################################################
+        conv1_out = self.conv1(x)
+        conv2_out = self.conv2(conv1_out)
+        scores = self.outputs(conv2_out)
+        ########################################################################
+        #                           END OF YOUR CODE                           #
+        ########################################################################
+        return scores
+
+
+def test_three_layer_conv_net():
+    tf.reset_default_graph()
+
+    channel_1, channel_2, num_classes = 12, 8, 10
+    model = ThreeLayerConvNet(channel_1, channel_2, num_classes)
+    with tf.device(device):
+        x = tf.zeros((64, 3, 32, 32))
+        scores = model(x)
+
+    with tf.Session() as sess:
+        sess.run(tf.global_variables_initializer())
+        scores_np = sess.run(scores)
+        print(scores_np.shape)
+
+
 if __name__ == '__main__':
     # Invoke the above function to get our data.
-    # NHW = (0, 1, 2)
-    # X_train, y_train, X_val, y_val, X_test, y_test = load_cifar10()
+    NHW = (0, 1, 2)
+    X_train, y_train, X_val, y_val, X_test, y_test = load_cifar10()
     # print('Train data shape: ', X_train.shape)
     # print('Train labels shape: ', y_train.shape, y_train.dtype)
     # print('Validation data shape: ', X_val.shape)
     # print('Validation labels shape: ', y_val.shape)
     # print('Test data shape: ', X_test.shape)
     # print('Test labels shape: ', y_test.shape)
-    # train_dset = Dataset(X_train, y_train, batch_size=64, shuffle=True)
-    # val_dset = Dataset(X_val, y_val, batch_size=64, shuffle=False)
-    # test_dset = Dataset(X_test, y_test, batch_size=64)
+    train_dset = Dataset(X_train, y_train, batch_size=64, shuffle=True)
+    val_dset = Dataset(X_val, y_val, batch_size=64, shuffle=False)
+    test_dset = Dataset(X_test, y_test, batch_size=64)
     # We can iterate through a dataset like this:
     # for t, (x, y) in enumerate(train_dset):
     #     print(t, x.shape, y.shape)
@@ -278,3 +624,14 @@ if __name__ == '__main__':
     print_every = 100
     # print('Using device: ', device)
 
+    # Train a Two-Layer Network
+    # learning_rate = 1e-2
+    # train_part2(two_layer_fc, two_layer_fc_init, learning_rate)
+    # Train a three-layer ConvNet
+    # learning_rate = 3e-3
+    # train_part2(three_layer_convnet, three_layer_convnet_init, learning_rate)
+
+    # test_two_layer_fc()
+    # test_two_layer_fc_functional()
+
+    test_three_layer_conv_net()
