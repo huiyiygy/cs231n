@@ -12,6 +12,8 @@ import math
 import timeit
 import matplotlib.pyplot as plt
 
+"""Part I: Preparation"""
+
 
 def load_cifar10(num_training=49000, num_validation=1000, num_test=10000):
     """
@@ -70,6 +72,9 @@ class Dataset(object):
         if self.shuffle:
             np.random.shuffle(idxs)
         return iter((self.X[i:i + B], self.y[i:i + B]) for i in range(0, N, B))
+
+
+"""Part II: Barebone TensorFlow"""
 
 
 def flatten(x):
@@ -479,25 +484,22 @@ def three_layer_convnet_init():
     return params
 
 
-class TwoLayerFC(tf.keras.models.Model):
+"""Part III: Keras API"""
+
+
+class TwoLayerFC(tf.keras.Model):
     """"""
-    # def __init__(self, hidden_size, num_classes):
-    #     super().__init__()
-    #     initializer = tf.variance_scaling_initializer(scale=2.0)
-    #     self.fc1 = tf.layers.Dense(hidden_size, activation=tf.nn.relu, kernel_initializer=initializer)
-    #     self.fc2 = tf.layers.Dense(num_classes, kernel_initializer=initializer)
-    # def call(self, x, training=None):
-    #     x = tf.layers.flatten(x)
-    #     x = self.fc1(x)
-    #     x = self.fc2(x)
-    #     return x
-    def __init__(self, input_size, hidden_size, num_classes):
-        # tf.variance_scaling_initializer gives behavior similar to the Kaiming initialization method
+    def __init__(self, hidden_size, num_classes):
+        super().__init__()
         initializer = tf.variance_scaling_initializer(scale=2.0)
-        self.inputs = tf.layers.Input((input_size,))
-        self.fc1 = tf.layers.Dense(hidden_size, activation=tf.nn.relu, kernel_initializer=initializer)(self.inputs)
-        self.outputs = tf.layers.Dense(num_classes, kernel_initializer=initializer)(self.fc1)
-        super(TwoLayerFC, self).__init__(self.inputs, self.outputs)
+        self.fc1 = tf.layers.Dense(hidden_size, activation=tf.nn.relu, kernel_initializer=initializer)
+        self.fc2 = tf.layers.Dense(num_classes, kernel_initializer=initializer)
+
+    def call(self, x, training=None):
+        x = tf.layers.flatten(x)
+        x = self.fc1(x)
+        x = self.fc2(x)
+        return x
 
 
 def test_two_layer_fc():
@@ -507,10 +509,9 @@ def test_two_layer_fc():
     # As usual in TensorFlow, we first need to define our computational graph.
     # To this end we first construct a TwoLayerFC object, then use it to construct
     # the scores Tensor.
-    model = TwoLayerFC(input_size, hidden_size, num_classes)
+    model = TwoLayerFC(hidden_size, num_classes)
     with tf.device(device):
         x = tf.zeros((64, input_size))
-        x = tf.layers.flatten(x)
         scores = model(x)
 
     # Now that our computational graph has been defined we can run the graph
@@ -548,7 +549,7 @@ def test_two_layer_fc_functional():
         print(scores_np.shape)
 
 
-class ThreeLayerConvNet(tf.keras.models.Model):
+class ThreeLayerConvNet(tf.keras.Model):
     def __init__(self, channel_1, channel_2, num_classes):
         super().__init__()  # tensorflow1.6及以下版本此句会报错，不支持此写法
         ########################################################################
@@ -556,10 +557,12 @@ class ThreeLayerConvNet(tf.keras.models.Model):
         # should instantiate layer objects to be used in the forward pass.     #
         ########################################################################
         initializer = tf.variance_scaling_initializer(scale=2.0)
-        self.conv1 = tf.layers.Conv2D(filters=channel_1, kernel_size=(5, 5), padding='same',
-                                      kernel_initializer=initializer, activation=tf.nn.relu, name='conv1')
-        self.conv2 = tf.layers.Conv2D(filters=channel_2, kernel_size=(3, 3), padding='same',
-                                      kernel_initializer=initializer, activation=tf.nn.relu, name='conv2')
+        self.conv1 = tf.layers.Conv2D(filters=channel_1, kernel_size=(5, 5), padding='same', strides=[1, 1],
+                                      kernel_initializer=initializer, data_format='channels_last',
+                                      activation=tf.nn.relu, name='conv1')
+        self.conv2 = tf.layers.Conv2D(filters=channel_2, kernel_size=(3, 3), padding='same', strides=[1, 1],
+                                      kernel_initializer=initializer, data_format='channels_last',
+                                      activation=tf.nn.relu, name='conv2')
         self.outputs = tf.layers.Dense(num_classes, kernel_initializer=initializer, name='outputs')
         ########################################################################
         #                           END OF YOUR CODE                           #
@@ -573,7 +576,8 @@ class ThreeLayerConvNet(tf.keras.models.Model):
         ########################################################################
         conv1_out = self.conv1(x)
         conv2_out = self.conv2(conv1_out)
-        scores = self.outputs(conv2_out)
+        conv2_out_flatten = tf.layers.flatten(conv2_out)
+        scores = self.outputs(conv2_out_flatten)
         ########################################################################
         #                           END OF YOUR CODE                           #
         ########################################################################
@@ -586,7 +590,7 @@ def test_three_layer_conv_net():
     channel_1, channel_2, num_classes = 12, 8, 10
     model = ThreeLayerConvNet(channel_1, channel_2, num_classes)
     with tf.device(device):
-        x = tf.zeros((64, 3, 32, 32))
+        x = tf.zeros((64, 32, 32, 3))
         scores = model(x)
 
     with tf.Session() as sess:
@@ -595,9 +599,234 @@ def test_three_layer_conv_net():
         print(scores_np.shape)
 
 
+def train_part34(model_init_fn, optimizer_init_fn, num_epochs=1):
+    """
+    Simple training loop for use with models defined using tf.keras. It trains
+    a model for one epoch on the CIFAR-10 training set and periodically checks
+    accuracy on the CIFAR-10 validation set.
+
+    Inputs:
+    - model_init_fn: A function that takes no parameters; when called it
+      constructs the model we want to train: model = model_init_fn()
+    - optimizer_init_fn: A function which takes no parameters; when called it
+      constructs the Optimizer object we will use to optimize the model:
+      optimizer = optimizer_init_fn()
+    - num_epochs: The number of epochs to train for
+
+    Returns: Nothing, but prints progress during trainingn
+    """
+    tf.reset_default_graph()
+    with tf.device(device):
+        # Construct the computational graph we will use to train the model. We
+        # use the model_init_fn to construct the model, declare placeholders for
+        # the data and labels
+        x = tf.placeholder(tf.float32, [None, 32, 32, 3])
+        y = tf.placeholder(tf.int32, [None])
+
+        # We need a place holder to explicitly specify if the model is in the training
+        # phase or not. This is because a number of layers behaves differently in
+        # training and in testing, e.g., dropout and batch normalization.
+        is_training = tf.placeholder(tf.bool, name='is_training')
+
+        # Use the model function to build the forward pass.
+        scores = model_init_fn(x, is_training)
+
+        # Compute the loss like we did in part II
+        loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y, logits=scores)
+        loss = tf.reduce_mean(loss)
+        l2_loss = tf.losses.get_regularization_loss()
+        loss += l2_loss
+
+        # Use the optimizer_fn to construct an Optimizer, then use the optimizer
+        # to set up the training step. Asking TensorFlow to evaluate the
+        # train_op returned by optimizer.minimize(loss) will cause us to make a
+        # single update step using the current minibatch of data.
+
+        # Note that we use tf.control_dependencies to force the model to run
+        # the tf.GraphKeys.UPDATE_OPS at each training step. tf.GraphKeys.UPDATE_OPS
+        # holds the operators that update the states of the network.
+        # For example, the tf.layers.batch_normalization function adds the running mean
+        # and variance update operators to tf.GraphKeys.UPDATE_OPS.
+        optimizer = optimizer_init_fn()
+        update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+        with tf.control_dependencies(update_ops):
+            train_op = optimizer.minimize(loss)
+
+    # Now we can run the computational graph many times to train the model.
+    # When we call sess.run we ask it to evaluate train_op, which causes the
+    # model to update.
+    with tf.Session() as sess:
+        sess.run(tf.global_variables_initializer())
+        t = 0
+        for epoch in range(num_epochs):
+            print('Starting epoch %d:' % epoch)
+            for x_np, y_np in train_dset:
+                feed_dict = {x: x_np, y: y_np, is_training: 1}
+                loss_np, _ = sess.run([loss, train_op], feed_dict=feed_dict)
+                if t % print_every == 0:
+                    print('Iteration %d, loss = %.4f' % (t, loss_np))
+                    check_accuracy(sess, val_dset, x, scores, is_training=is_training)
+                    print()
+                t += 1
+
+
+def fc_model_init_fn(inputs, is_training):
+    hidden_size, num_classes = 4000, 10
+    # return TwoLayerFC(hidden_size, num_classes)(inputs)
+    return two_layer_fc_functional(inputs, hidden_size, num_classes)
+
+
+def fc_optimizer_init_fn():
+    learning_rate = 1e-2
+    # return tf.train.GradientDescentOptimizer(learning_rate)
+    return tf.train.GradientDescentOptimizer(learning_rate)
+
+
+def conv_model_init_fn(inputs, is_training):
+    model = None
+    channel_1, channel_2, num_classes = 32, 16, 10
+    ############################################################################
+    # Complete the implementation of model_fn.                           #
+    ############################################################################
+    model = ThreeLayerConvNet(channel_1, channel_2, num_classes)
+    ############################################################################
+    #                           END OF YOUR CODE                               #
+    ############################################################################
+    return model(inputs)
+
+
+def conv_optimizer_init_fn():
+    optimizer = None
+    learning_rate = 3e-3
+    momentum = 0.9
+    ############################################################################
+    # Complete the implementation of model_fn.                           #
+    ############################################################################
+    optimizer = tf.train.MomentumOptimizer(learning_rate, momentum, use_nesterov=True)
+    ############################################################################
+    #                           END OF YOUR CODE                               #
+    ############################################################################
+    return optimizer
+
+
+"""Part IV: Keras Sequential API"""
+
+
+def sequential_fc_model_init_fn(inputs, is_training):
+    input_shape = (32, 32, 3)
+    hidden_layer_size, num_classes = 4000, 10
+    initializer = tf.variance_scaling_initializer(scale=2.0)
+    layers = [
+        tf.layers.Flatten(input_shape=input_shape),
+        tf.layers.Dense(hidden_layer_size, activation=tf.nn.relu, kernel_initializer=initializer),
+        tf.layers.Dense(num_classes, kernel_initializer=initializer),
+    ]
+    model = tf.keras.Sequential(layers)
+    return model(inputs)
+
+
+def sequential_fc_optimizer_init_fn():
+    learning_rate = 1e-2
+    return tf.train.GradientDescentOptimizer(learning_rate)
+
+
+def sequential_conv_model_init_fn(inputs, is_training):
+    model = None
+    ############################################################################
+    # Construct a three-layer ConvNet using tf.keras.Sequential.         #
+    ############################################################################
+    initializer = tf.variance_scaling_initializer(scale=2.0)
+    layers = [
+        tf.layers.Conv2D(filters=16, kernel_size=(5, 5), padding='same', strides=[1, 1],
+                         kernel_initializer=initializer, data_format='channels_last',
+                         activation=tf.nn.relu, name='conv1'),
+        tf.layers.Conv2D(filters=32, kernel_size=(3, 3), padding='same', strides=[1, 1],
+                         kernel_initializer=initializer, data_format='channels_last',
+                         activation=tf.nn.relu, name='conv2'),
+        tf.layers.Flatten(),
+        tf.layers.Dense(10, kernel_initializer=initializer, name='outputs')
+
+    ]
+    model = tf.keras.Sequential(layers)
+    ############################################################################
+    #                            END OF YOUR CODE                              #
+    ############################################################################
+    return model(inputs)
+
+
+def sequential_conv_optimizer_init_fn():
+    optimizer = None
+    learning_rate = 5e-4
+    ############################################################################
+    # Complete the implementation of model_fn.                           #
+    ############################################################################
+    optimizer = tf.train.MomentumOptimizer(learning_rate, momentum=0.9, use_nesterov=True)
+    ############################################################################
+    #                           END OF YOUR CODE                               #
+    ############################################################################
+    return optimizer
+
+
+"""Part V: CIFAR-10 open-ended challenge"""
+
+
+def my_model_init_fn(inputs, is_training):
+    initializer = tf.variance_scaling_initializer(scale=2.0)
+    reg = 1e-5
+    layers = [
+        tf.layers.Conv2D(filters=64, kernel_size=3, padding='same', strides=1, kernel_initializer=initializer,
+                         kernel_regularizer=tf.keras.regularizers.l2(reg), name='conv_1_1'),
+        tf.layers.BatchNormalization(name='bn_1_1'),
+        tf.keras.layers.Activation(activation='relu', name='relu_1_1'),
+        tf.layers.Dropout(rate=0.5, name='drop_1_1'),
+        tf.layers.Conv2D(filters=64, kernel_size=3, padding='same', strides=1, kernel_initializer=initializer,
+                         kernel_regularizer=tf.keras.regularizers.l2(reg), name='conv_1_2'),
+        tf.layers.BatchNormalization(name='bn_1_2'),
+        tf.keras.layers.Activation(activation='relu', name='relu_1_2'),
+        tf.layers.Dropout(rate=0.5, name='drop_1_2'),
+        tf.layers.MaxPooling2D(pool_size=2, strides=2, name='pool_1'),
+
+        tf.layers.Conv2D(filters=128, kernel_size=3, padding='same', strides=1, kernel_initializer=initializer,
+                         kernel_regularizer=tf.keras.regularizers.l2(reg), name='conv_2_1'),
+        tf.layers.BatchNormalization(name='bn_2_1'),
+        tf.keras.layers.Activation(activation='relu', name='relu_2_1'),
+        tf.layers.Dropout(rate=0.5, name='drop_2_1'),
+        tf.layers.Conv2D(filters=128, kernel_size=3, padding='same', strides=1, kernel_initializer=initializer,
+                         kernel_regularizer=tf.keras.regularizers.l2(reg), name='conv_2_2'),
+        tf.layers.BatchNormalization(name='bn_2_2'),
+        tf.keras.layers.Activation(activation='relu', name='relu_2_2'),
+        tf.layers.Dropout(rate=0.5, name='drop_2_2'),
+        tf.layers.MaxPooling2D(pool_size=2, strides=2, name='pool_2'),
+
+        tf.layers.Conv2D(filters=256, kernel_size=3, padding='same', strides=1, kernel_initializer=initializer,
+                         kernel_regularizer=tf.keras.regularizers.l2(reg), name='conv_3_1'),
+        tf.layers.BatchNormalization(name='bn_3_1'),
+        tf.keras.layers.Activation(activation='relu', name='relu_3_1'),
+        tf.layers.Dropout(rate=0.5, name='drop_3_1'),
+        tf.layers.Conv2D(filters=256, kernel_size=3, padding='same', strides=1, kernel_initializer=initializer,
+                         kernel_regularizer=tf.keras.regularizers.l2(reg), name='conv_3_2'),
+        tf.layers.BatchNormalization(name='bn_3_2'),
+        tf.keras.layers.Activation(activation='relu', name='relu_3_2'),
+        tf.layers.Dropout(rate=0.5, name='drop_3_2'),
+        tf.layers.MaxPooling2D(pool_size=2, strides=2, name='pool_3'),
+
+        tf.layers.Flatten(),
+        tf.layers.Dense(10, kernel_initializer=initializer, kernel_regularizer=tf.keras.regularizers.l2(reg),
+                        name='outputs'),
+    ]
+    model = tf.keras.Sequential(layers)
+    return model(inputs)
+
+
+def my_optimizer_init_fn():
+    optimizer = tf.train.AdamOptimizer(learning_rate=1e-3)
+    return optimizer
+
+
 if __name__ == '__main__':
+    """Part I: Preparation"""
     # Invoke the above function to get our data.
-    NHW = (0, 1, 2)
+    # NHW = (0, 1, 2)
     X_train, y_train, X_val, y_val, X_test, y_test = load_cifar10()
     # print('Train data shape: ', X_train.shape)
     # print('Train labels shape: ', y_train.shape, y_train.dtype)
@@ -621,17 +850,23 @@ if __name__ == '__main__':
     else:
         device = '/cpu:0'
     # Constant to control how often we print when training models
-    print_every = 100
+    print_every = 200
     # print('Using device: ', device)
-
+    """Part II: Barebone TensorFlow"""
     # Train a Two-Layer Network
     # learning_rate = 1e-2
     # train_part2(two_layer_fc, two_layer_fc_init, learning_rate)
     # Train a three-layer ConvNet
     # learning_rate = 3e-3
     # train_part2(three_layer_convnet, three_layer_convnet_init, learning_rate)
-
+    """Part III: Keras API"""
     # test_two_layer_fc()
     # test_two_layer_fc_functional()
-
-    test_three_layer_conv_net()
+    # test_three_layer_conv_net()
+    # train_part34(fc_model_init_fn, fc_optimizer_init_fn)
+    # train_part34(conv_model_init_fn, conv_optimizer_init_fn)
+    """Part IV: Keras Sequential API"""
+    # train_part34(sequential_fc_model_init_fn, sequential_fc_optimizer_init_fn)
+    # train_part34(sequential_conv_model_init_fn, sequential_conv_optimizer_init_fn)
+    """Part V: CIFAR-10 open-ended challenge"""
+    train_part34(my_model_init_fn, my_optimizer_init_fn, num_epochs=10)
