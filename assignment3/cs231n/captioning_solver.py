@@ -1,6 +1,3 @@
-from __future__ import print_function, division
-from builtins import range
-from builtins import object
 import numpy as np
 
 from cs231n import optim
@@ -115,7 +112,6 @@ class CaptioningSolver(object):
 
         self._reset()
 
-
     def _reset(self):
         """
         Set up some book-keeping variables for optimization. Don't call this
@@ -134,7 +130,6 @@ class CaptioningSolver(object):
         for p in self.model.params:
             d = {k: v for k, v in self.optim_config.items()}
             self.optim_configs[p] = d
-
 
     def _step(self):
         """
@@ -158,7 +153,6 @@ class CaptioningSolver(object):
             next_w, next_config = self.update_rule(w, dw, config)
             self.model.params[p] = next_w
             self.optim_configs[p] = next_config
-
 
     def check_accuracy(self, X, y, num_samples=None, batch_size=100):
         """
@@ -200,7 +194,6 @@ class CaptioningSolver(object):
         acc = np.mean(y_pred == y)
 
         return acc
-
 
     def train(self):
         """

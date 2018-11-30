@@ -1,13 +1,12 @@
-from builtins import range
-import os, json
+import os
+import json
 import numpy as np
 import h5py
 
 BASE_DIR = 'cs231n/datasets/coco_captioning'
 
-def load_coco_data(base_dir=BASE_DIR,
-                   max_train=None,
-                   pca_features=True):
+
+def load_coco_data(base_dir=BASE_DIR, max_train=None, pca_features=True):
     data = {}
     caption_file = os.path.join(base_dir, 'coco2014_captions.h5')
     with h5py.File(caption_file, 'r') as f:

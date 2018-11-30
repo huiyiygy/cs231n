@@ -1,11 +1,9 @@
-from __future__ import print_function
-
-from builtins import range
 from six.moves import cPickle as pickle
 import numpy as np
 import os
 from scipy.misc import imread
 import platform
+
 
 def load_pickle(f):
     version = platform.python_version_tuple()
@@ -14,6 +12,7 @@ def load_pickle(f):
     elif version[0] == '3':
         return  pickle.load(f, encoding='latin1')
     raise ValueError("invalid python version: {}".format(version))
+
 
 def load_CIFAR_batch(filename):
     """ load single batch of cifar """
@@ -24,6 +23,7 @@ def load_CIFAR_batch(filename):
         X = X.reshape(10000, 3, 32, 32).transpose(0,2,3,1).astype("float")
         Y = np.array(Y)
         return X, Y
+
 
 def load_CIFAR10(ROOT):
     """ load all of cifar """
