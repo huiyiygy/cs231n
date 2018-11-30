@@ -6,3 +6,8 @@
 
 # 忽略assigment2中数据集文件夹
 /assignment2/cs231n/datasets/
+
+# 忽略assigment3中数据集文件夹
+/assignment3/cs231n/datasets/coco_captioning/
+/assignment3/cs231n/datasets/imagenet*
+/assignment3/cs231n/datasets/squeezenet*
