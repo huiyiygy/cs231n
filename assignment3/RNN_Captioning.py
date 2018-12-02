@@ -263,11 +263,138 @@ def check_temporal_sotfmax_loss():
     print('dx error: ', rel_error(dx, dx_num))
 
 
+def check_rnn_for_image_captioning():
+    """
+    Now that you have implemented the necessary layers, you can combine them to build an
+    image captioning model. Open the file cs231n/classifiers/rnn.py and look at the
+    CaptioningRNN class.
+
+    Implement the forward and backward pass of the model in the loss function. For now
+    you only need to implement the case where cell_type='rnn' for vanialla RNNs; you will
+    implement the LSTM case later. After doing so, run the following to check your
+    forward pass using a small test case; you should see error on the order of e-10 or less.
+    """
+    N, D, W, H = 10, 20, 30, 40
+    word_to_idx = {'<NULL>': 0, 'cat': 2, 'dog': 3}
+    V = len(word_to_idx)
+    T = 13
+
+    model = CaptioningRNN(word_to_idx,
+                          input_dim=D,
+                          wordvec_dim=W,
+                          hidden_dim=H,
+                          cell_type='rnn',
+                          dtype=np.float64)
+
+    # Set all model parameters to fixed values
+    for k, v in model.params.items():
+        model.params[k] = np.linspace(-1.4, 1.3, num=v.size).reshape(*v.shape)
+
+    features = np.linspace(-1.5, 0.3, num=(N * D)).reshape(N, D)
+    captions = (np.arange(N * T) % V).reshape(N, T)
+
+    loss, grads = model.loss(features, captions)
+    expected_loss = 9.83235591003
+
+    print('loss: ', loss)
+    print('expected loss: ', expected_loss)
+    print('difference: ', abs(loss - expected_loss))
+
+
+def check_gradien_on_captioning_rnn():
+    """
+    perform numeric gradient checking on the CaptioningRNN class; you should see errors
+    around the order of e-6 or less.
+    """
+    np.random.seed(231)
+
+    batch_size = 2
+    timesteps = 3
+    input_dim = 4
+    wordvec_dim = 5
+    hidden_dim = 6
+    word_to_idx = {'<NULL>': 0, 'cat': 2, 'dog': 3}
+    vocab_size = len(word_to_idx)
+
+    captions = np.random.randint(vocab_size, size=(batch_size, timesteps))
+    features = np.random.randn(batch_size, input_dim)
+
+    model = CaptioningRNN(word_to_idx,
+                          input_dim=input_dim,
+                          wordvec_dim=wordvec_dim,
+                          hidden_dim=hidden_dim,
+                          cell_type='rnn',
+                          dtype=np.float64)
+
+    loss, grads = model.loss(features, captions)
+
+    for param_name in sorted(grads):
+        f = lambda _: model.loss(features, captions)[0]
+        param_grad_num = eval_numerical_gradient(f, model.params[param_name], verbose=False, h=1e-6)
+        e = rel_error(param_grad_num, grads[param_name])
+        print('%s relative error: %e' % (param_name, e))
+
+
+def overfit_small_data():
+    """
+    Similar to the Solver class that we used to train image classification models on the
+    previous assignment, on this assignment we use a CaptioningSolver class to train
+    image captioning models. Open the file cs231n/captioning_solver.py and read through
+    the CaptioningSolver class; it should look very familiar.
+
+    Once you have familiarized yourself with the API, run the following to make sure your
+    model overfits a small sample of 100 training examples. You should see a final loss
+    of less than 0.1.
+    """
+    np.random.seed(231)
+
+    small_data = load_coco_data(max_train=50)
+
+    small_rnn_model = CaptioningRNN(
+        cell_type='rnn',
+        word_to_idx=data['word_to_idx'],
+        input_dim=data['train_features'].shape[1],
+        hidden_dim=512,
+        wordvec_dim=256,
+    )
+    small_rnn_solver = CaptioningSolver(small_rnn_model, small_data,
+                                        update_rule='adam',
+                                        num_epochs=50,
+                                        batch_size=25,
+                                        optim_config={
+                                            'learning_rate': 5e-3,
+                                        },
+                                        lr_decay=0.95,
+                                        verbose=True, print_every=10,
+                                        )
+    small_rnn_solver.train()
+
+    # Plot the training losses
+    plt.plot(small_rnn_solver.loss_history)
+    plt.xlabel('Iteration')
+    plt.ylabel('Loss')
+    plt.title('Training loss history')
+    plt.show()
+
+    for split in ['train', 'val']:
+        gt_captions, features, urls = sample_coco_minibatch(small_data, split=split, batch_size=2)
+        gt_captions = decode_captions(gt_captions, data['idx_to_word'])
+
+        sample_captions = small_rnn_model.sample(features)
+        sample_captions = decode_captions(sample_captions, data['idx_to_word'])
+
+        for gt_caption, sample_caption, url in zip(gt_captions, sample_captions, urls):
+            plt.imshow(image_from_url(url))
+            plt.title('%s\n%s\nGT:%s' % (split, sample_caption, gt_caption))
+            plt.axis('off')
+            plt.show()
+
+
 if __name__ == "__main__":
     # Load COCO data from disk,this return a dictionary. We'll work with dimensionality-reduced
     # feature for this notebook, but feel free to experiment with the original features by
     # changing the flag below.
-    # data = load_coco_data(pca_features=True)
+    data = load_coco_data(pca_features=True)
     # # Print out all the keys and values from the data dictionary
     # for k, v in data.items():
     #     if type(v) == np.ndarray:
@@ -284,4 +411,5 @@ if __name__ == "__main__":
     #     caption_str = decode_captions(caption, data['idx_to_word'])
     #     plt.title(caption_str)
     #     plt.show()
-    check_temporal_affine_layer()
+    overfit_small_data()
+

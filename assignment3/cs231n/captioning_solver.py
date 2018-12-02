@@ -170,8 +170,6 @@ class CaptioningSolver(object):
         - acc: Scalar giving the fraction of instances that were correctly
           classified by the model.
         """
-        return 0.0
-
         # Maybe subsample the data
         N = X.shape[0]
         if num_samples is not None and N > num_samples:
