@@ -5,7 +5,6 @@
 @file:RNN_Captioning.py
 @time:2018/11/30 16:15
 """
-import time, os, json
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -412,4 +411,3 @@ if __name__ == "__main__":
     #     plt.title(caption_str)
     #     plt.show()
     overfit_small_data()
-

@@ -300,14 +300,21 @@ def lstm_step_forward(x, prev_h, prev_c, Wx, Wh, b):
     """
     next_h, next_c, cache = None, None, None
     #############################################################################
-    # TODO: Implement the forward pass for a single timestep of an LSTM.        #
+    # Implement the forward pass for a single timestep of an LSTM.        #
     # You may want to use the numerically stable sigmoid implementation above.  #
     #############################################################################
-    pass
+    _, H = prev_h.shape
+    a = np.dot(x, Wx) + np.dot(prev_h, Wh) + b
+    input_gate = sigmoid(a[:, 0:H])
+    forget_gate = sigmoid(a[:, H:2 * H])
+    output_gate = sigmoid(a[:, 2 * H:3 * H])
+    gate_gate = np.tanh(a[:, 3 * H:4 * H])
+    next_c = forget_gate * prev_c + input_gate * gate_gate
+    next_h = output_gate * np.tanh(next_c)
+    cache = (x, prev_h, prev_c, Wx, Wh, next_c, input_gate, forget_gate, output_gate, gate_gate)
     ##############################################################################
     #                               END OF YOUR CODE                             #
     ##############################################################################
-
     return next_h, next_c, cache
 
 
@@ -330,16 +337,36 @@ def lstm_step_backward(dnext_h, dnext_c, cache):
     """
     dx, dprev_h, dprev_c, dWx, dWh, db = None, None, None, None, None, None
     #############################################################################
-    # TODO: Implement the backward pass for a single timestep of an LSTM.       #
+    # Implement the backward pass for a single timestep of an LSTM.             #
     #                                                                           #
     # HINT: For sigmoid and tanh you can compute local derivatives in terms of  #
     # the output value from the nonlinearity.                                   #
     #############################################################################
-    pass
+    x, prev_h, prev_c, Wx, Wh, next_c, input_gate, forget_gate, output_gate, gate_gate = cache
+    N, H = dnext_c.shape
+    tanh_next_c = np.tanh(next_c)
+
+    d_output_gate = tanh_next_c * dnext_h
+    # compute the gradient on tanh(next_c), dtanh = 1 - tanh(x)^2
+    dnext_c = dnext_c + output_gate * dnext_h * (np.ones((N, H)) - np.square(tanh_next_c))
+    d_forget_gate = prev_c * dnext_c
+    dprev_c = forget_gate * dnext_c
+    d_input_gate = gate_gate * dnext_c
+    d_gate_gate = input_gate * dnext_c
+    # compute the gradient on sigmod(a)   dsigmod = sigmod(a)(1 − sigmod(a))
+    da = np.hstack([input_gate * (np.ones((N, H)) - input_gate) * d_input_gate,
+                    forget_gate * (np.ones((N, H)) - forget_gate) * d_forget_gate,
+                    output_gate * (np.ones((N, H)) - output_gate) * d_output_gate,
+                    (np.ones((N, H)) - np.square(gate_gate)) * d_gate_gate
+                    ])
+    dx = np.dot(da, Wx.T)
+    dWx = np.dot(x.T, da)
+    dprev_h = np.dot(da, Wh.T)
+    dWh = np.dot(prev_h.T, da)
+    db = np.sum(da, axis=0)
     ##############################################################################
     #                               END OF YOUR CODE                             #
     ##############################################################################
-
     return dx, dprev_h, dprev_c, dWx, dWh, db
 
 
