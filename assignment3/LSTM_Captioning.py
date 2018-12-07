@@ -97,12 +97,153 @@ def check_lstm_step_backward():
     print('db error: ', rel_error(db_num, db))
 
 
+def check_lstm_forward():
+    """You should see an error on the order of e-7 or less."""
+    N, D, H, T = 2, 5, 4, 3
+    x = np.linspace(-0.4, 0.6, num=N * T * D).reshape(N, T, D)
+    h0 = np.linspace(-0.4, 0.8, num=N * H).reshape(N, H)
+    Wx = np.linspace(-0.2, 0.9, num=4 * D * H).reshape(D, 4 * H)
+    Wh = np.linspace(-0.3, 0.6, num=4 * H * H).reshape(H, 4 * H)
+    b = np.linspace(0.2, 0.7, num=4 * H)
+
+    h, cache = lstm_forward(x, h0, Wx, Wh, b)
+
+    expected_h = np.asarray([
+        [[0.01764008, 0.01823233, 0.01882671, 0.0194232],
+         [0.11287491, 0.12146228, 0.13018446, 0.13902939],
+         [0.31358768, 0.33338627, 0.35304453, 0.37250975]],
+        [[0.45767879, 0.4761092, 0.4936887, 0.51041945],
+         [0.6704845, 0.69350089, 0.71486014, 0.7346449],
+         [0.81733511, 0.83677871, 0.85403753, 0.86935314]]])
+
+    print('h error: ', rel_error(expected_h, h))
+
+
+def check_lstm_backward():
+    """
+    You should see errors on the order of e-8 or less. (For dWh, it's fine if your error
+    is on the order of e-6 or less).
+    """
+    np.random.seed(231)
+
+    N, D, T, H = 2, 3, 10, 6
+
+    x = np.random.randn(N, T, D)
+    h0 = np.random.randn(N, H)
+    Wx = np.random.randn(D, 4 * H)
+    Wh = np.random.randn(H, 4 * H)
+    b = np.random.randn(4 * H)
+
+    out, cache = lstm_forward(x, h0, Wx, Wh, b)
+
+    dout = np.random.randn(*out.shape)
+
+    dx, dh0, dWx, dWh, db = lstm_backward(dout, cache)
+
+    fx = lambda x: lstm_forward(x, h0, Wx, Wh, b)[0]
+    fh0 = lambda h0: lstm_forward(x, h0, Wx, Wh, b)[0]
+    fWx = lambda Wx: lstm_forward(x, h0, Wx, Wh, b)[0]
+    fWh = lambda Wh: lstm_forward(x, h0, Wx, Wh, b)[0]
+    fb = lambda b: lstm_forward(x, h0, Wx, Wh, b)[0]
+
+    dx_num = eval_numerical_gradient_array(fx, x, dout)
+    dh0_num = eval_numerical_gradient_array(fh0, h0, dout)
+    dWx_num = eval_numerical_gradient_array(fWx, Wx, dout)
+    dWh_num = eval_numerical_gradient_array(fWh, Wh, dout)
+    db_num = eval_numerical_gradient_array(fb, b, dout)
+
+    print('dx error: ', rel_error(dx_num, dx))
+    print('dh0 error: ', rel_error(dh0_num, dh0))
+    print('dWx error: ', rel_error(dWx_num, dWx))
+    print('dWh error: ', rel_error(dWh_num, dWh))
+    print('db error: ', rel_error(db_num, db))
+
+
+def check_lstm_captioning_model():
+    """You should see a difference on the order of e-10 or less."""
+    N, D, W, H = 10, 20, 30, 40
+    word_to_idx = {'<NULL>': 0, 'cat': 2, 'dog': 3}
+    V = len(word_to_idx)
+    T = 13
+
+    model = CaptioningRNN(word_to_idx,
+                          input_dim=D,
+                          wordvec_dim=W,
+                          hidden_dim=H,
+                          cell_type='lstm',
+                          dtype=np.float64)
+
+    # Set all model parameters to fixed values
+    for k, v in model.params.items():
+        model.params[k] = np.linspace(-1.4, 1.3, num=v.size).reshape(*v.shape)
+
+    features = np.linspace(-0.5, 1.7, num=N * D).reshape(N, D)
+    captions = (np.arange(N * T) % V).reshape(N, T)
+
+    loss, grads = model.loss(features, captions)
+    expected_loss = 9.82445935443
+
+    print('loss: ', loss)
+    print('expected loss: ', expected_loss)
+    print('difference: ', abs(loss - expected_loss))
+
+
+def overfit_lstm_captioning_model():
+    """You should see a final loss less than 0.5."""
+    np.random.seed(231)
+
+    small_data = load_coco_data(max_train=50)
+
+    small_lstm_model = CaptioningRNN(
+        cell_type='lstm',
+        word_to_idx=data['word_to_idx'],
+        input_dim=data['train_features'].shape[1],
+        hidden_dim=512,
+        wordvec_dim=256,
+        dtype=np.float32,
+    )
+
+    small_lstm_solver = CaptioningSolver(small_lstm_model, small_data,
+                                         update_rule='adam',
+                                         num_epochs=50,
+                                         batch_size=25,
+                                         optim_config={
+                                             'learning_rate': 5e-3,
+                                         },
+                                         lr_decay=0.995,
+                                         verbose=True, print_every=10,
+                                         )
+
+    small_lstm_solver.train()
+
+    # Plot the training losses
+    plt.plot(small_lstm_solver.loss_history)
+    plt.xlabel('Iteration')
+    plt.ylabel('Loss')
+    plt.title('Training loss history')
+    plt.show()
+
+    for split in ['train', 'val']:
+        minibatch = sample_coco_minibatch(small_data, split=split, batch_size=2)
+        gt_captions, features, urls = minibatch
+        gt_captions = decode_captions(gt_captions, data['idx_to_word'])
+
+        sample_captions = small_lstm_model.sample(features)
+        sample_captions = decode_captions(sample_captions, data['idx_to_word'])
+
+        for gt_caption, sample_caption, url in zip(gt_captions, sample_captions, urls):
+            plt.imshow(image_from_url(url))
+            plt.title('%s\n%s\nGT:%s' % (split, sample_caption, gt_caption))
+            plt.axis('off')
+            plt.show()
+
+
 if __name__ == "__main__":
-    # data = load_coco_data(pca_features=True)
+    data = load_coco_data(pca_features=True)
     # Print out all the keys and values from the data dictionary
     # for k, v in data.items():
     #     if type(v) == np.ndarray:
     #         print(k, type(v), v.shape, v.dtype)
     #     else:
     #         print(k, type(v), len(v))
-    check_lstm_step_backward()
+    overfit_lstm_captioning_model()
