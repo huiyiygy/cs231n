@@ -6,13 +6,10 @@
 @time:2018/12/11 19:46
 """
 import torch
-import torch.nn as nn
 import torchvision
 import torchvision.transforms as T
 import PIL
 import numpy as np
-from scipy.misc import imread
-from collections import namedtuple
 import matplotlib.pyplot as plt
 
 from cs231n.image_utils import SQUEEZENET_MEAN, SQUEEZENET_STD
