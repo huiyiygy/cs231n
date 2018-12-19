@@ -9,5 +9,6 @@
 
 # 忽略assigment3中数据集文件夹
 /assignment3/cs231n/datasets/coco_captioning/
+/assignment3/cs231n/datasets/MNIST_data/
 /assignment3/cs231n/datasets/imagenet*
 /assignment3/cs231n/datasets/squeezenet*
