@@ -1,3 +1,3 @@
 # cs231n
 http://cs231n.stanford.edu/
-I  cs231n spring1718 assignemnt both in pycharm and jupyter notebook, this is the pycharm version
+I finished cs231n spring1718 assignemnt both in PyCharm and Jupyter notebook, this is the PyCharm version.
